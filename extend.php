@@ -1,162 +1,199 @@
 <?php
-
 return [
     (new Flarum\Extend\Frontend('forum'))
         ->content(function (\Flarum\Frontend\Document $document) {
             $document->head[] = <<<'HTML'
 <script>
-console.log("🔥 Subtags v7 (Flarum Buttons) завантажено");
+console.log("🔥 Subtags завантажено");
 
-document.addEventListener('DOMContentLoaded', function() {
-    initSubtags();
-});
-
-if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(initSubtags, 500);
-}
-
-function initSubtags() {
-    let checkCount = 0;
-    const checkInterval = setInterval(function() {
-        checkCount++;
-        
-        if (typeof app !== "undefined" && app.store && app.route && m) {
-            clearInterval(checkInterval);
-            console.log("✅ App готовий (SPA mode)");
-            startWatching();
-        } else if (checkCount > 200) {
-            clearInterval(checkInterval);
-        }
-    }, 100);
-}
-
-function startWatching() {
-    console.log("👀 SPA навігація активована");
+(function() {
+    let observer = null;
     
-    function showSubtags() {
-        setTimeout(function() {
-            try {
-                const url = window.location.pathname;
-                
-                if (url.includes('/t/')) {
-                    const tagSlug = url.split('/t/')[1].split('/')[0];
-                    console.log("🔍 Тег:", tagSlug);
-                    
-                    let currentTag = null;
-                    if (app.store && app.store.all) {
-                        const allTags = app.store.all('tags');
-                        currentTag = allTags.find(function(tag) {
-                            return tag.slug() === tagSlug;
-                        });
-                    }
-                    
-                    if (currentTag) {
-                        const children = currentTag.children ? currentTag.children() : [];
-                        console.log("👶 Дочірніх:", children.length);
-                        
-                        if (children.length > 0) {
-                            const container = document.querySelector('.DiscussionListPane, .IndexPage-results, .DiscussionList');
-                            
-                            if (container) {
-                                const oldBlock = document.querySelector('.subtags-display');
-                                if (oldBlock) oldBlock.remove();
-                                
-                                // Створюємо Mithril компонент у стилі кнопок Flarum
-                                const subtagsDiv = document.createElement('div');
-                                subtagsDiv.className = 'subtags-display';
-                                
-                                m.render(subtagsDiv, 
-                                    m('div', {
-                                        style: {
-                                            padding: '16px 0',
-                                            marginBottom: '16px',
-                                            borderBottom: '1px solid var(--control-bg, #f3f4f5)'
-                                        }
-                                    }, [
-                                        m('div', {
-                                            className: 'container',
-                                            style: {
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                flexWrap: 'wrap'
-                                            }
-                                        }, [
-                                            m('span', {
-                                                style: {
-                                                    fontSize: '14px',
-                                                    fontWeight: '500',
-                                                    color: 'var(--muted-color, #999)',
-                                                    marginRight: '8px'
-                                                }
-                                            }, '📂 Підкатегорії:'),
-                                            ...children.map(function(child) {
-                                                const tagColor = child.color() || '#888';
-                                                
-                                                return m('a', {
-                                                    href: app.route('tag', {tags: child.slug()}),
-                                                    className: 'Button Button--link hasIcon',
-                                                    style: {
-                                                        backgroundColor: 'transparent',
-                                                        color: tagColor,
-                                                        padding: '8px 13px',
-                                                        borderRadius: '4px',
-                                                        textDecoration: 'none',
-                                                        fontSize: '14px',
-                                                        fontWeight: '500',
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        transition: 'all 0.2s ease',
-                                                        border: '1px solid ' + tagColor,
-                                                        cursor: 'pointer',
-                                                        lineHeight: '1.5'
-                                                    },
-                                                    onclick: function(e) {
-                                                        e.preventDefault();
-                                                        console.log("🚀 SPA перехід до:", child.name());
-                                                        m.route.set(app.route('tag', {tags: child.slug()}));
-                                                    },
-                                                    onmouseenter: function(e) {
-                                                        e.target.style.textDecoration = 'underline';
-                                                    },
-                                                    onmouseleave: function(e) {
-                                                        e.target.style.textDecoration = 'none';
-                                                    }
-                                                }, child.name());
-                                            })
-                                        ])
-                                    ])
-                                );
-                                
-                                container.insertBefore(subtagsDiv, container.firstChild);
-                                console.log("✅ SPA суб-теги додано!");
-                            }
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error("❌ Помилка:", e.message);
+    function initSubtags() {
+        const waitForApp = setInterval(function() {
+            if (typeof app !== "undefined" && app.store && app.route && m) {
+                clearInterval(waitForApp);
+                console.log("✅ App готовий");
+                startWatching();
             }
-        }, 1000);
+        }, 50);
+        
+        setTimeout(function() { clearInterval(waitForApp); }, 5000);
     }
     
-    // Запуск
-    showSubtags();
+    function startWatching() {
+        // Спостерігаємо за змінами в body
+        observer = new MutationObserver(function(mutations) {
+            // Перевіряємо чи з'явилася бокова панель з дочірніми тегами
+            const sidebar = document.querySelector('.IndexPage-nav');
+            if (sidebar) {
+                const childTags = sidebar.querySelectorAll('.TagLinkButton.child');
+                if (childTags.length > 0) {
+                    // Якщо знайшли дочірні теги в боковій панелі - показуємо їх нагорі
+                    const existing = document.querySelector('.subtags-display');
+                    if (!existing) {
+                        console.log("👶 Бокова панель готова з", childTags.length, "тегами");
+                        showSubtags();
+                    }
+                }
+            }
+        });
+        
+        // Починаємо спостереження
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        // Також перевіряємо одразу
+        setTimeout(showSubtags, 100);
+    }
     
-    // Відстежування через MutationObserver
-    let lastUrl = location.href;
-    new MutationObserver(function() {
-        const url = location.href;
-        if (url !== lastUrl) {
-            lastUrl = url;
-            console.log("🔄 SPA навігація виявлена");
-            showSubtags();
+    function showSubtags() {
+        try {
+            // Перевіряємо чи вже є блок
+            if (document.querySelector('.subtags-display')) {
+                return;
+            }
+            
+            // Шукаємо бокову панель
+            const sidebar = document.querySelector('.IndexPage-nav');
+            if (!sidebar) {
+                console.log("⏳ Бокова панель ще не готова");
+                return;
+            }
+            
+            // Шукаємо дочірні теги
+            const childTags = sidebar.querySelectorAll('.TagLinkButton.child');
+            if (childTags.length === 0) {
+                console.log("👶 Немає дочірніх тегів");
+                return;
+            }
+            
+            // Перевіряємо чи поточна сторінка є одним з дочірніх тегів
+            const currentUrl = window.location.pathname;
+            let isOnChildTag = false;
+            
+            childTags.forEach(function(tag) {
+                const href = tag.getAttribute('href');
+                if (href && currentUrl.includes(href)) {
+                    isOnChildTag = true;
+                    console.log("👶 Знаходимось на дочірньому тезі:", tag.textContent.trim());
+                }
+            });
+            
+            if (isOnChildTag) {
+                console.log("🚫 Суб-теги не показуємо, бо відкрито дочірній тег");
+                return;
+            }
+            
+            console.log("✅ Знайдено", childTags.length, "дочірніх тегів у боковій панелі");
+            
+            // Знаходимо контейнер для вставки
+            const container = document.querySelector('.IndexPage-results, .DiscussionList');
+            if (!container) {
+                console.log("⏳ Контейнер для дискусій ще не готовий");
+                return;
+            }
+            
+            // Створюємо блок з суб-тегами
+            const subtagsDiv = document.createElement('div');
+            subtagsDiv.className = 'subtags-display';
+            
+            const buttonsArray = [];
+            childTags.forEach(function(tag) {
+                const href = tag.getAttribute('href');
+                const style = tag.getAttribute('style');
+                const labelEl = tag.querySelector('.Button-label');
+                const iconEl = tag.querySelector('.TagIcon');
+                const name = labelEl ? labelEl.textContent.trim() : '';
+                
+                if (name && href) {
+                    const iconStyle = iconEl ? iconEl.getAttribute('style') : '';
+                    
+                    buttonsArray.push(
+                        m('a.TagLinkButton.child.hasIcon', {
+                            href: href,
+                            style: style,
+                            onclick: function(e) {
+                                e.preventDefault();
+                                removeSubtags();
+                                m.route.set(href);
+                            }
+                        }, [
+                            m('span.Button-icon.icon.TagIcon', {
+                                style: iconStyle
+                            }),
+                            m('span.Button-label', name)
+                        ])
+                    );
+                }
+            });
+            
+            m.render(subtagsDiv, 
+                m('div', {
+                    style: {
+                        padding: '16px 0',
+                        marginBottom: '16px',
+                        borderBottom: '1px solid var(--control-bg, #f3f4f5)'
+                    }
+                }, [
+                    m('div', {
+                        className: 'container',
+                        style: {
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            flexWrap: 'wrap'
+                        }
+                    }, [
+                        m('span', {
+                            style: {
+                                fontSize: '14px',
+                                fontWeight: '500',
+                                color: 'var(--muted-color, #999)',
+                                marginRight: '8px'
+                            }
+                        }, '📂 '),
+                        ...buttonsArray
+                    ])
+                ])
+            );
+            
+            container.insertBefore(subtagsDiv, container.firstChild);
+            console.log("✅ Суб-теги додано нагору сторінки!");
+            
+        } catch (e) {
+            console.error("❌ Помилка:", e);
         }
-    }).observe(document.body, { subtree: true, childList: true });
+    }
     
-    console.log("✅ Готово до роботи!");
-}
+    function removeSubtags() {
+        const oldBlock = document.querySelector('.subtags-display');
+        if (oldBlock) {
+            oldBlock.remove();
+            console.log("🗑️ Старі суб-теги видалено");
+        }
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSubtags);
+    } else {
+        initSubtags();
+    }
+})();
 </script>
+
+<style>
+.subtags-display .TagLinkButton {
+    margin: 0 2px 2px 0;
+    font-size: 17px;
+ 
+ padding: 2px 6px;
+  border-radius: 17px;
+  box-shadow: 0px 0px 0px 1px var(--button-toggled-color);
+}
+</style>
 HTML;
         })
 ];

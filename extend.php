@@ -8,6 +8,8 @@ console.log("🔥 Subtags завантажено");
 
 (function() {
     let observer = null;
+    let retryCount = 0;
+    const maxRetries = 10;
     
     function initSubtags() {
         const waitForApp = setInterval(function() {
@@ -18,59 +20,54 @@ console.log("🔥 Subtags завантажено");
             }
         }, 50);
         
-        setTimeout(function() { clearInterval(waitForApp); }, 5000);
+        setTimeout(function() { clearInterval(waitForApp); }, 10000);
     }
     
     function startWatching() {
-        // Спостерігаємо за змінами в body
         observer = new MutationObserver(function(mutations) {
-            // Перевіряємо чи з'явилася бокова панель з дочірніми тегами
-            const sidebar = document.querySelector('.IndexPage-nav');
-            if (sidebar) {
-                const childTags = sidebar.querySelectorAll('.TagLinkButton.child');
-                if (childTags.length > 0) {
-                    // Якщо знайшли дочірні теги в боковій панелі - показуємо їх нагорі
-                    const existing = document.querySelector('.subtags-display');
-                    if (!existing) {
-                        console.log("👶 Бокова панель готова з", childTags.length, "тегами");
-                        showSubtags();
-                    }
-                }
-            }
+            checkAndShowSubtags();
         });
         
-        // Починаємо спостереження
         observer.observe(document.body, {
             childList: true,
             subtree: true
         });
         
-        // Також перевіряємо одразу
-        setTimeout(showSubtags, 100);
+        setTimeout(checkAndShowSubtags, 100);
+        setTimeout(checkAndShowSubtags, 500);
+        setTimeout(checkAndShowSubtags, 1000);
+    }
+    
+    function checkAndShowSubtags() {
+        const sidebar = document.querySelector('.IndexPage-nav');
+        if (!sidebar) {
+            return;
+        }
+        
+        const childTags = sidebar.querySelectorAll('.TagLinkButton.child');
+        if (childTags.length === 0) {
+            retryCount++;
+            if (retryCount < maxRetries) {
+                setTimeout(checkAndShowSubtags, 300);
+            }
+            return;
+        }
+        
+        showSubtags();
     }
     
     function showSubtags() {
         try {
-            // Перевіряємо чи вже є блок
             if (document.querySelector('.subtags-display')) {
                 return;
             }
             
-            // Шукаємо бокову панель
             const sidebar = document.querySelector('.IndexPage-nav');
-            if (!sidebar) {
-                console.log("⏳ Бокова панель ще не готова");
-                return;
-            }
+            if (!sidebar) return;
             
-            // Шукаємо дочірні теги
             const childTags = sidebar.querySelectorAll('.TagLinkButton.child');
-            if (childTags.length === 0) {
-                console.log("👶 Немає дочірніх тегів");
-                return;
-            }
+            if (childTags.length === 0) return;
             
-            // Перевіряємо чи поточна сторінка є одним з дочірніх тегів
             const currentUrl = window.location.pathname;
             let isOnChildTag = false;
             
@@ -78,25 +75,16 @@ console.log("🔥 Subtags завантажено");
                 const href = tag.getAttribute('href');
                 if (href && currentUrl.includes(href)) {
                     isOnChildTag = true;
-                    console.log("👶 Знаходимось на дочірньому тезі:", tag.textContent.trim());
                 }
             });
             
-            if (isOnChildTag) {
-                console.log("🚫 Суб-теги не показуємо, бо відкрито дочірній тег");
-                return;
-            }
+            if (isOnChildTag) return;
             
-            console.log("✅ Знайдено", childTags.length, "дочірніх тегів у боковій панелі");
+            let container = document.querySelector('.IndexPage-results');
+            if (!container) container = document.querySelector('.DiscussionList');
+            if (!container) container = document.querySelector('.IndexPage-toolbar');
+            if (!container) return;
             
-            // Знаходимо контейнер для вставки
-            const container = document.querySelector('.IndexPage-results, .DiscussionList');
-            if (!container) {
-                console.log("⏳ Контейнер для дискусій ще не готовий");
-                return;
-            }
-            
-            // Створюємо блок з суб-тегами
             const subtagsDiv = document.createElement('div');
             subtagsDiv.className = 'subtags-display';
             
@@ -105,14 +93,11 @@ console.log("🔥 Subtags завантажено");
                 const href = tag.getAttribute('href');
                 const style = tag.getAttribute('style');
                 const labelEl = tag.querySelector('.Button-label');
-                const iconEl = tag.querySelector('.TagIcon');
                 const name = labelEl ? labelEl.textContent.trim() : '';
                 
                 if (name && href) {
-                    const iconStyle = iconEl ? iconEl.getAttribute('style') : '';
-                    
                     buttonsArray.push(
-                        m('a.TagLinkButton.child.hasIcon', {
+                        m('a.subtag-item', {
                             href: href,
                             style: style,
                             onclick: function(e) {
@@ -120,12 +105,7 @@ console.log("🔥 Subtags завантажено");
                                 removeSubtags();
                                 m.route.set(href);
                             }
-                        }, [
-                            m('span.Button-icon.icon.TagIcon', {
-                                style: iconStyle
-                            }),
-                            m('span.Button-label', name)
-                        ])
+                        }, m('span.subtag-label', name))
                     );
                 }
             });
@@ -135,11 +115,10 @@ console.log("🔥 Subtags завантажено");
                     style: {
                         padding: '16px 0',
                         marginBottom: '16px',
-                        borderBottom: '1px solid var(--control-bg, #f3f4f5)'
+                        borderBottom: '1px solid var(--control-bg)'
                     }
                 }, [
                     m('div', {
-                        className: 'container',
                         style: {
                             display: 'flex',
                             alignItems: 'center',
@@ -151,7 +130,7 @@ console.log("🔥 Subtags завантажено");
                             style: {
                                 fontSize: '14px',
                                 fontWeight: '500',
-                                color: 'var(--muted-color, #999)',
+                                color: 'var(--muted-color)',
                                 marginRight: '8px'
                             }
                         }, '📂 '),
@@ -160,8 +139,11 @@ console.log("🔥 Subtags завантажено");
                 ])
             );
             
-            container.insertBefore(subtagsDiv, container.firstChild);
-            console.log("✅ Суб-теги додано нагору сторінки!");
+            if (container.classList.contains('IndexPage-toolbar')) {
+                container.parentNode.insertBefore(subtagsDiv, container.nextSibling);
+            } else {
+                container.insertBefore(subtagsDiv, container.firstChild);
+            }
             
         } catch (e) {
             console.error("❌ Помилка:", e);
@@ -170,10 +152,7 @@ console.log("🔥 Subtags завантажено");
     
     function removeSubtags() {
         const oldBlock = document.querySelector('.subtags-display');
-        if (oldBlock) {
-            oldBlock.remove();
-            console.log("🗑️ Старі суб-теги видалено");
-        }
+        if (oldBlock) oldBlock.remove();
     }
     
     if (document.readyState === 'loading') {
@@ -185,15 +164,32 @@ console.log("🔥 Subtags завантажено");
 </script>
 
 <style>
-.subtags-display .TagLinkButton {
-    margin: 0 2px 2px 0;
-    font-size: 17px;
- 
- padding: 2px 6px;
-  border-radius: 17px;
-  box-shadow: 0px 0px 0px 1px var(--button-toggled-color);
+.subtag-item {
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.subtag-item:hover {
+    transform: translateY(-2px);
+}
+
+.subtag-label {
+    padding: 4px 8px;
+    border-radius: 16px;
+    background-color: var(--body-bg-faded);
+    color: var(--tag-color);
+    font-size: 16px;
+    font-weight: 500;
+    box-shadow: 0px 0px 1px 1px var(--button-toggled-bg);
+    transition: all 0.3s ease;
+}
+
+.subtag-item:hover .subtag-label {
+    background-color: var(--tag-bg);
+    box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.2);
+    transform: scale(1.05);
 }
 </style>
 HTML;
         })
-];
+]; 

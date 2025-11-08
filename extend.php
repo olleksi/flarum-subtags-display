@@ -244,7 +244,7 @@ return [
     color: var(--tag-color);
     font-size: 14px;
     font-weight: 500;
-    box-shadow: 0px 0px 1px 1px var(--button-toggled-bg);
+    box-shadow: 0px 0px 0.4px 0.4px var(--button-toggled-bg);
     transition: all 0.3s ease;
     display: inline-block;
     white-space: nowrap;

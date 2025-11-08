@@ -6,7 +6,7 @@
 
 ```bash
 composer require olleksi/flarum-subtags
-php flarum extension:enable olleksi-subtags
+
 ```
 
 ## ⚙️ Налаштування

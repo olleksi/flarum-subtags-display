@@ -1,0 +1,4 @@
+olleksi-flarum-subtags:
+  admin:
+    hide_sidebar_label: Hide subtags in sidebar
+    hide_sidebar_help: When enabled, child tags will only be displayed above the discussion list, not in the sidebar navigation

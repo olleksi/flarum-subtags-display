@@ -1,162 +1,205 @@
 <?php
-return [
-    (new Flarum\Extend\Frontend('forum'))
-        ->content(function (\Flarum\Frontend\Document $document) {
-            $document->head[] = <<<'HTML'
-<script>
-console.log("🔥 Subtags завантажено");
 
+use Flarum\Extend;
+use Flarum\Settings\SettingsRepositoryInterface;
+
+return [
+    (new Extend\Frontend('forum'))
+        ->content(function (\Flarum\Frontend\Document $document) {
+            $settings = resolve(SettingsRepositoryInterface::class);
+            $hideSidebarSubtags = $settings->get('olleksi-subtags.hide_sidebar', false) ? 'true' : 'false';
+            
+            $document->head[] = '<script>
 (function() {
+    const hideSidebarSubtags = ' . $hideSidebarSubtags . ';
     let observer = null;
-    let retryCount = 0;
-    const maxRetries = 10;
+    let checkTimeout = null;
+    let isProcessing = false;
     
     function initSubtags() {
         const waitForApp = setInterval(function() {
-            if (typeof app !== "undefined" && app.store && app.route && m) {
+            if (typeof app !== "undefined" && app.store && m) {
                 clearInterval(waitForApp);
-                console.log("✅ App готовий");
-                startWatching();
+                
+                if (hideSidebarSubtags) {
+                    applySidebarHiding();
+                }
+                
+                setupRouteListener();
+                startObserver();
+                scheduleCheck();
             }
         }, 50);
         
         setTimeout(function() { clearInterval(waitForApp); }, 10000);
     }
     
-    function startWatching() {
+    function applySidebarHiding() {
+        const style = document.createElement("style");
+        style.id = "subtags-sidebar-hide";
+        style.textContent = ".IndexPage-nav .TagLinkButton.child { display: none !important; }";
+        document.head.appendChild(style);
+    }
+    
+    function setupRouteListener() {
+        const originalRouteSet = m.route.set;
+        m.route.set = function() {
+            removeSubtags();
+            isProcessing = false;
+            
+            const result = originalRouteSet.apply(this, arguments);
+            scheduleCheck(200);
+            
+            return result;
+        };
+    }
+    
+    function startObserver() {
+        if (observer) return;
+        
         observer = new MutationObserver(function(mutations) {
-            checkAndShowSubtags();
+            const hasRelevantChanges = mutations.some(function(mutation) {
+                return Array.from(mutation.addedNodes).some(function(node) {
+                    return node.nodeType === 1 && (
+                        node.classList && (
+                            node.classList.contains("TagLinkButton") ||
+                            node.classList.contains("IndexPage-nav") ||
+                            node.classList.contains("IndexPage-results")
+                        ) ||
+                        node.querySelector && (
+                            node.querySelector(".TagLinkButton") ||
+                            node.querySelector(".IndexPage-nav") ||
+                            node.querySelector(".IndexPage-results")
+                        )
+                    );
+                });
+            });
+            
+            if (hasRelevantChanges) {
+                scheduleCheck();
+            }
         });
         
         observer.observe(document.body, {
             childList: true,
             subtree: true
         });
-        
-        setTimeout(checkAndShowSubtags, 100);
-        setTimeout(checkAndShowSubtags, 500);
-        setTimeout(checkAndShowSubtags, 1000);
     }
     
-    function checkAndShowSubtags() {
-        const sidebar = document.querySelector('.IndexPage-nav');
-        if (!sidebar) {
-            return;
+    function scheduleCheck(delay) {
+        if (checkTimeout) {
+            clearTimeout(checkTimeout);
         }
         
-        const childTags = sidebar.querySelectorAll('.TagLinkButton.child');
+        checkTimeout = setTimeout(function() {
+            processSubtags();
+        }, delay || 150);
+    }
+    
+    function processSubtags() {
+        if (isProcessing) return;
+        
+        const childTags = getChildTagsData();
+        
         if (childTags.length === 0) {
-            retryCount++;
-            if (retryCount < maxRetries) {
-                setTimeout(checkAndShowSubtags, 300);
-            }
+            removeSubtags();
             return;
         }
         
-        showSubtags();
+        const currentUrl = window.location.pathname;
+        const isOnChildTag = childTags.some(function(tag) {
+            return currentUrl.includes(tag.href);
+        });
+        
+        if (isOnChildTag) {
+            removeSubtags();
+            return;
+        }
+        
+        isProcessing = true;
+        renderSubtags(childTags);
+        isProcessing = false;
     }
     
-    function showSubtags() {
-        try {
-            if (document.querySelector('.subtags-display')) {
-                return;
+    function getChildTagsData() {
+        const sidebar = document.querySelector(".IndexPage-nav");
+        if (!sidebar) return [];
+        
+        const childTags = sidebar.querySelectorAll(".TagLinkButton.child");
+        const tagsData = [];
+        
+        childTags.forEach(function(tag) {
+            const href = tag.getAttribute("href");
+            const style = tag.getAttribute("style");
+            const labelEl = tag.querySelector(".Button-label");
+            const name = labelEl ? labelEl.textContent.trim() : "";
+            
+            if (name && href) {
+                tagsData.push({
+                    name: name,
+                    href: href,
+                    style: style || ""
+                });
             }
+        });
+        
+        return tagsData;
+    }
+    
+    function renderSubtags(childTagsData) {
+        try {
+            removeSubtags();
             
-            const sidebar = document.querySelector('.IndexPage-nav');
-            if (!sidebar) return;
+            let container = document.querySelector(".IndexPage-results");
+            if (!container) container = document.querySelector(".DiscussionList");
+            if (!container) container = document.querySelector(".IndexPage-toolbar");
             
-            const childTags = sidebar.querySelectorAll('.TagLinkButton.child');
-            if (childTags.length === 0) return;
-            
-            const currentUrl = window.location.pathname;
-            let isOnChildTag = false;
-            
-            childTags.forEach(function(tag) {
-                const href = tag.getAttribute('href');
-                if (href && currentUrl.includes(href)) {
-                    isOnChildTag = true;
-                }
-            });
-            
-            if (isOnChildTag) return;
-            
-            let container = document.querySelector('.IndexPage-results');
-            if (!container) container = document.querySelector('.DiscussionList');
-            if (!container) container = document.querySelector('.IndexPage-toolbar');
             if (!container) return;
             
-            const subtagsDiv = document.createElement('div');
-            subtagsDiv.className = 'subtags-display';
+            const subtagsDiv = document.createElement("div");
+            subtagsDiv.className = "subtags-display";
             
-            const buttonsArray = [];
-            childTags.forEach(function(tag) {
-                const href = tag.getAttribute('href');
-                const style = tag.getAttribute('style');
-                const labelEl = tag.querySelector('.Button-label');
-                const name = labelEl ? labelEl.textContent.trim() : '';
-                
-                if (name && href) {
-                    buttonsArray.push(
-                        m('a.subtag-item', {
-                            href: href,
-                            style: style,
-                            onclick: function(e) {
-                                e.preventDefault();
-                                removeSubtags();
-                                m.route.set(href);
-                            }
-                        }, m('span.subtag-label', name))
-                    );
-                }
+            const buttonsArray = childTagsData.map(function(tag) {
+                return m("a.subtag-item", {
+                    href: tag.href,
+                    style: tag.style,
+                    onclick: function(e) {
+                        e.preventDefault();
+                        removeSubtags();
+                        m.route.set(tag.href);
+                    }
+                }, m("span.subtag-label", tag.name));
             });
             
             m.render(subtagsDiv, 
-                m('div', {
-                    style: {
-                        padding: '16px 0',
-                        marginBottom: '16px',
-                        borderBottom: '1px solid var(--control-bg)'
-                    }
-                }, [
-                    m('div', {
-                        style: {
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            flexWrap: 'wrap'
-                        }
-                    }, [
-                        m('span', {
-                            style: {
-                                fontSize: '14px',
-                                fontWeight: '500',
-                                color: 'var(--muted-color)',
-                                marginRight: '8px'
-                            }
-                        }, '📂 '),
+                m("div.subtags-container", [
+                    m("div.subtags-wrapper", [
+                        m("span.subtags-title", "📂"),
                         ...buttonsArray
                     ])
                 ])
             );
             
-            if (container.classList.contains('IndexPage-toolbar')) {
+            if (container.classList.contains("IndexPage-toolbar")) {
                 container.parentNode.insertBefore(subtagsDiv, container.nextSibling);
             } else {
                 container.insertBefore(subtagsDiv, container.firstChild);
             }
             
         } catch (e) {
-            console.error("❌ Помилка:", e);
+            console.error("Subtags render error:", e);
         }
     }
     
     function removeSubtags() {
-        const oldBlock = document.querySelector('.subtags-display');
-        if (oldBlock) oldBlock.remove();
+        const oldBlock = document.querySelector(".subtags-display");
+        if (oldBlock) {
+            oldBlock.remove();
+        }
     }
     
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initSubtags);
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initSubtags);
     } else {
         initSubtags();
     }
@@ -164,9 +207,30 @@ console.log("🔥 Subtags завантажено");
 </script>
 
 <style>
+.subtags-container {
+    padding: 16px 0;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--control-bg);
+}
+
+.subtags-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.subtags-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted-color);
+    margin-right: 8px;
+}
+
 .subtag-item {
     text-decoration: none;
     transition: all 0.3s ease;
+    display: inline-block;
 }
 
 .subtag-item:hover {
@@ -174,14 +238,16 @@ console.log("🔥 Subtags завантажено");
 }
 
 .subtag-label {
-    padding: 4px 8px;
+    padding: 6px 12px;
     border-radius: 16px;
     background-color: var(--body-bg-faded);
     color: var(--tag-color);
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 500;
     box-shadow: 0px 0px 1px 1px var(--button-toggled-bg);
     transition: all 0.3s ease;
+    display: inline-block;
+    white-space: nowrap;
 }
 
 .subtag-item:hover .subtag-label {
@@ -189,7 +255,52 @@ console.log("🔥 Subtags завантажено");
     box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.2);
     transform: scale(1.05);
 }
-</style>
-HTML;
-        })
-]; 
+
+.subtags-display {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>';
+        }),
+    
+    (new Extend\Frontend('admin'))
+        ->content(function (\Flarum\Frontend\Document $document) {
+            $document->head[] = '<script>
+window.addEventListener("load", function() {
+    setTimeout(function() {
+        if (window.app && window.app.extensionData) {
+            try {
+                app.extensionData
+                    .for("olleksi-subtags")
+                    .registerSetting({
+                        setting: "olleksi-subtags.hide_sidebar",
+                        type: "boolean",
+                        label: app.translator.trans("olleksi-subtags.admin.hide_sidebar_label"),
+                        help: app.translator.trans("olleksi-subtags.admin.hide_sidebar_help")
+                    });
+                
+                setTimeout(function() {
+                    if (window.m && window.m.redraw) {
+                        window.m.redraw();
+                    }
+                }, 100);
+                
+            } catch (error) {
+                console.error("Subtags admin error:", error);
+            }
+        }
+    }, 2000);
+});
+</script>';
+        }),
+    
+    (new Extend\Locales(__DIR__.'/locale')),
+    
+    (new Extend\Settings())
+        ->default('olleksi-subtags.hide_sidebar', false)
+        ->serializeToForum('olleksi-subtags.hide_sidebar', 'olleksi-subtags.hide_sidebar', 'boolval')
+];
